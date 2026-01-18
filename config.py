@@ -1,0 +1,41 @@
+"""
+Configuration management for Personal AI Assistant.
+Uses environment variables with sensible defaults.
+"""
+from typing import Optional
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    """Application settings loaded from environment variables."""
+    
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        case_sensitive=False,
+        extra="ignore"
+    )
+    
+    # API Configuration
+    app_name: str = "Personal AI Assistant"
+    app_version: str = "0.1.0"
+    api_prefix: str = "/api/v1"
+    debug: bool = False
+    
+    # Server Configuration
+    host: str = "127.0.0.1"
+    port: int = 8000
+    
+    # AI/LLM Configuration
+    llm_provider: str = "mock"  # mock, openai, etc.
+    openai_api_key: Optional[str] = None
+    openai_model: str = "gpt-3.5-turbo"
+    
+    # Database Configuration
+    database_url: str = "sqlite:///./assistant.db"
+    
+    # System Personality
+    system_personality: str = "You are a helpful, friendly, and intelligent personal assistant."
+
+
+# Global settings instance
+settings = Settings()
