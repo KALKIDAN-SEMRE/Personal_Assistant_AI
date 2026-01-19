@@ -26,9 +26,14 @@ class Settings(BaseSettings):
     port: int = 8000
     
     # AI/LLM Configuration
-    llm_provider: str = "mock"  # mock, openai, etc.
+    llm_provider: str = "ollama"  # mock, openai, ollama
     openai_api_key: Optional[str] = None
     openai_model: str = "gpt-3.5-turbo"
+    
+    # Ollama Configuration (local LLM)
+    ollama_model: str = "llama3"
+    ollama_url: str = "http://localhost:11434/api/generate"
+
     
     # Database Configuration
     database_url: str = "sqlite:///./assistant.db"
