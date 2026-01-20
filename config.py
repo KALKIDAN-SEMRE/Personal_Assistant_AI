@@ -40,6 +40,9 @@ class Settings(BaseSettings):
     
     # System Personality
     system_personality: str = "You are a helpful, friendly, and intelligent personal assistant."
+    
+    # Memory Configuration
+    max_conversation_history: int = 10  # Maximum messages to keep per session
 
 
 # Global settings instance

@@ -7,13 +7,11 @@ from typing import List
 from fastapi import APIRouter, HTTPException
 from app.models.schemas import ChatRequest, ChatResponse, ChatMessage
 from app.services.ai_service import ai_service
+from app.memory.conversation_memory import conversation_memory
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/chat", tags=["chat"])
-
-# In-memory conversation storage (will be replaced with database later)
-conversations: dict[str, List[ChatMessage]] = {}
 
 
 @router.post("", response_model=ChatResponse)
@@ -23,7 +21,7 @@ async def chat(request: ChatRequest) -> ChatResponse:
     
     Handles:
     - Creating new conversations or continuing existing ones
-    - Maintaining conversation history
+    - Maintaining conversation history via ConversationMemory
     - Generating AI responses
     
     Args:
@@ -33,38 +31,41 @@ async def chat(request: ChatRequest) -> ChatResponse:
         ChatResponse with AI response and conversation_id
     """
     try:
-        # Get or create conversation
-        conversation_id = request.conversation_id or str(uuid.uuid4())
+        # Get or create session_id (using conversation_id from request)
+        session_id = request.conversation_id or str(uuid.uuid4())
         
-        # Initialize conversation if new
-        if conversation_id not in conversations:
-            conversations[conversation_id] = []
+        # Retrieve conversation history from memory
+        history = conversation_memory.get_history(session_id)
         
-        # Add user message to conversation
+        # Create and add user message
         user_message = ChatMessage(role="user", content=request.message)
-        conversations[conversation_id].append(user_message)
+        conversation_memory.add_message(session_id, user_message)
+        
+        # Build message list for AI service (include history + new user message)
+        messages_for_ai = history + [user_message]
         
         # Generate AI response
         response_text = await ai_service.generate_response(
-            messages=conversations[conversation_id],
+            messages=messages_for_ai,
             user_id=request.user_id
         )
         
-        # Add assistant response to conversation
+        # Create and store assistant response
         assistant_message = ChatMessage(role="assistant", content=response_text)
-        conversations[conversation_id].append(assistant_message)
+        conversation_memory.add_message(session_id, assistant_message)
         
         logger.info(
-            f"Chat request processed: conversation_id={conversation_id}, "
-            f"user_id={request.user_id}"
+            f"Chat request processed: session_id={session_id}, "
+            f"user_id={request.user_id}, "
+            f"message_count={conversation_memory.get_message_count(session_id)}"
         )
         
         return ChatResponse(
             response=response_text,
-            conversation_id=conversation_id,
+            conversation_id=session_id,
             metadata={
                 "provider": ai_service.provider,
-                "message_count": len(conversations[conversation_id])
+                "message_count": conversation_memory.get_message_count(session_id)
             }
         )
         
@@ -79,19 +80,21 @@ async def get_conversation(conversation_id: str) -> dict:
     Retrieve conversation history by ID.
     
     Args:
-        conversation_id: Unique conversation identifier
+        conversation_id: Unique conversation identifier (session_id)
         
     Returns:
         Dictionary containing conversation messages
     """
-    if conversation_id not in conversations:
+    if not conversation_memory.has_session(conversation_id):
         raise HTTPException(status_code=404, detail="Conversation not found")
+    
+    history = conversation_memory.get_history(conversation_id)
     
     return {
         "conversation_id": conversation_id,
         "messages": [
             {"role": msg.role, "content": msg.content}
-            for msg in conversations[conversation_id]
+            for msg in history
         ],
-        "message_count": len(conversations[conversation_id])
+        "message_count": len(history)
     }
