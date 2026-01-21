@@ -5,8 +5,9 @@ Personal AI Assistant - Chat Interface
 import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from app.api.routes import router
+from app.core.database import init_db
 import config
-from app.api.chat import router as chat_router
 
 # Configure logging
 logging.basicConfig(
@@ -34,19 +35,20 @@ app.add_middleware(
 )
 
 # Include routers
-app.include_router(chat_router, prefix=config.settings.api_prefix)
+app.include_router(router)
+
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize database on application startup."""
+    init_db()
+    logger.info("Application startup complete")
 
 
 @app.get("/")
-async def root():
-    """Root endpoint with API information."""
-    return {
-        "name": config.settings.app_name,
-        "version": config.settings.app_version,
-        "status": "running",
-        "docs": "/docs",
-        "health": "/health"
-    }
+def root():
+    """Root endpoint."""
+    return {"status": "running"}
 
 
 @app.get("/health")

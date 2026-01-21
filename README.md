@@ -57,6 +57,13 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
+Or install uvicorn with standard extras directly:
+
+```bash
+python -m pip install "uvicorn[standard]"
+pip install -r requirements.txt
+```
+
 4. **Configure environment variables** (optional)
 
 Create a `.env` file in the root directory:
@@ -65,7 +72,9 @@ Create a `.env` file in the root directory:
 DEBUG=True
 HOST=127.0.0.1
 PORT=8000
-LLM_PROVIDER=mock
+LLM_PROVIDER=ollama
+OLLAMA_MODEL=llama3
+OLLAMA_URL=http://localhost:11434/api/generate
 OPENAI_API_KEY=your-api-key-here  # If using OpenAI
 OPENAI_MODEL=gpt-3.5-turbo
 SYSTEM_PERSONALITY=You are a helpful, friendly, and intelligent personal assistant.
@@ -73,14 +82,22 @@ SYSTEM_PERSONALITY=You are a helpful, friendly, and intelligent personal assista
 
 5. **Run the application**
 
+Using uvicorn directly (recommended):
+
+```bash
+python -m uvicorn main:app --reload
+```
+
+Or using the main.py entry point:
+
 ```bash
 python main.py
 ```
 
-Or using uvicorn directly:
+Or with custom host/port:
 
 ```bash
-uvicorn main:app --reload --host 127.0.0.1 --port 8000
+python -m uvicorn main:app --reload --host 127.0.0.1 --port 8000
 ```
 
 The API will be available at `http://127.0.0.1:8000`

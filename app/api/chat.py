@@ -7,7 +7,7 @@ from typing import List
 from fastapi import APIRouter, HTTPException
 from app.models.schemas import ChatRequest, ChatResponse, ChatMessage
 from app.services.ai_service import ai_service
-from app.memory.conversation_memory import conversation_memory
+from app.memory.persistent import persistent_memory
 
 logger = logging.getLogger(__name__)
 
@@ -21,8 +21,9 @@ async def chat(request: ChatRequest) -> ChatResponse:
     
     Handles:
     - Creating new conversations or continuing existing ones
-    - Maintaining conversation history via ConversationMemory
+    - Maintaining conversation history via PersistentConversationMemory
     - Generating AI responses
+    - Persisting all messages to database
     
     Args:
         request: Chat request containing message and optional conversation_id
@@ -34,14 +35,17 @@ async def chat(request: ChatRequest) -> ChatResponse:
         # Get or create session_id (using conversation_id from request)
         session_id = request.conversation_id or str(uuid.uuid4())
         
-        # Retrieve conversation history from memory
-        history = conversation_memory.get_history(session_id)
+        # Load conversation history from persistent storage
+        # This loads the last N messages (enforced by max_history)
+        history = persistent_memory.get_recent_messages(session_id)
         
-        # Create and add user message
+        # Create user message
         user_message = ChatMessage(role="user", content=request.message)
-        conversation_memory.add_message(session_id, user_message)
         
-        # Build message list for AI service (include history + new user message)
+        # Save user message to persistent storage
+        persistent_memory.save_message(session_id, "user", request.message)
+        
+        # Build message list for AI service (history + new user message)
         messages_for_ai = history + [user_message]
         
         # Generate AI response
@@ -50,14 +54,16 @@ async def chat(request: ChatRequest) -> ChatResponse:
             user_id=request.user_id
         )
         
-        # Create and store assistant response
-        assistant_message = ChatMessage(role="assistant", content=response_text)
-        conversation_memory.add_message(session_id, assistant_message)
+        # Save assistant response to persistent storage
+        persistent_memory.save_message(session_id, "assistant", response_text)
+        
+        # Get total message count for metadata
+        total_count = persistent_memory.get_message_count(session_id)
         
         logger.info(
             f"Chat request processed: session_id={session_id}, "
             f"user_id={request.user_id}, "
-            f"message_count={conversation_memory.get_message_count(session_id)}"
+            f"message_count={total_count}"
         )
         
         return ChatResponse(
@@ -65,7 +71,7 @@ async def chat(request: ChatRequest) -> ChatResponse:
             conversation_id=session_id,
             metadata={
                 "provider": ai_service.provider,
-                "message_count": conversation_memory.get_message_count(session_id)
+                "message_count": total_count
             }
         )
         
@@ -77,7 +83,7 @@ async def chat(request: ChatRequest) -> ChatResponse:
 @router.get("/conversations/{conversation_id}")
 async def get_conversation(conversation_id: str) -> dict:
     """
-    Retrieve conversation history by ID.
+    Retrieve conversation history by ID from persistent storage.
     
     Args:
         conversation_id: Unique conversation identifier (session_id)
@@ -85,10 +91,12 @@ async def get_conversation(conversation_id: str) -> dict:
     Returns:
         Dictionary containing conversation messages
     """
-    if not conversation_memory.has_session(conversation_id):
+    if not persistent_memory.has_session(conversation_id):
         raise HTTPException(status_code=404, detail="Conversation not found")
     
-    history = conversation_memory.get_history(conversation_id)
+    # Retrieve recent messages (respects max_history limit)
+    history = persistent_memory.get_recent_messages(conversation_id)
+    total_count = persistent_memory.get_message_count(conversation_id)
     
     return {
         "conversation_id": conversation_id,
@@ -96,5 +104,6 @@ async def get_conversation(conversation_id: str) -> dict:
             {"role": msg.role, "content": msg.content}
             for msg in history
         ],
-        "message_count": len(history)
+        "message_count": len(history),
+        "total_messages": total_count
     }
