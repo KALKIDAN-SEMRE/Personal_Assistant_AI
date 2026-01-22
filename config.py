@@ -43,6 +43,13 @@ class Settings(BaseSettings):
     
     # Memory Configuration
     max_conversation_history: int = 10  # Maximum messages to keep per session
+    
+    # Semantic Memory Configuration
+    embedding_provider: str = "mock"  # mock, openai, ollama
+    embedding_dimension: int = 384  # Embedding vector dimension
+    openai_embedding_model: str = "text-embedding-3-small"
+    semantic_memory_min_similarity: float = 0.3  # Minimum similarity for retrieval
+    semantic_memory_max_retrieved: int = 5  # Max memories to retrieve per query
 
 
 # Global settings instance
