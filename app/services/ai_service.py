@@ -8,6 +8,7 @@ from typing import List, Optional
 import requests
 
 from app.models.schemas import ChatMessage
+from app.memory.semantic import semantic_memory
 import config
 
 logger = logging.getLogger(__name__)
@@ -27,6 +28,7 @@ class AIService:
     ) -> str:
         """
         Generate AI response from conversation messages.
+        Includes semantic memory retrieval for personalized responses.
 
         Args:
             messages: List of chat messages (conversation history)
@@ -35,25 +37,46 @@ class AIService:
         Returns:
             Generated response string
         """
+        # Get user's latest message for semantic memory retrieval
+        user_messages = [msg for msg in messages if msg.role == "user"]
+        query_text = user_messages[-1].content if user_messages else ""
+        
+        # Retrieve relevant semantic memories
+        semantic_context = ""
+        if user_id and query_text:
+            try:
+                semantic_context = await semantic_memory.get_context_for_query(
+                    query=query_text,
+                    user_id=user_id
+                )
+            except Exception as e:
+                logger.warning(f"Error retrieving semantic memories: {e}")
+        
+        # Enhance system personality with semantic context
+        enhanced_personality = self.system_personality
+        if semantic_context:
+            enhanced_personality = self.system_personality + semantic_context
+        
         if self.provider == "mock":
-            return self._mock_response(messages)
+            return self._mock_response(messages, enhanced_personality)
 
         elif self.provider == "openai":
-            return await self._openai_response(messages)
+            return await self._openai_response(messages, enhanced_personality)
 
         elif self.provider == "ollama":
-            return await self._ollama_response(messages)
+            return await self._ollama_response(messages, enhanced_personality)
 
         else:
             logger.warning(f"Unknown provider '{self.provider}', falling back to mock.")
-            return self._mock_response(messages)
+            return self._mock_response(messages, enhanced_personality)
 
     # ------------------------------------------------------------------
     # MOCK PROVIDER
     # ------------------------------------------------------------------
 
-    def _mock_response(self, messages: List[ChatMessage]) -> str:
+    def _mock_response(self, messages: List[ChatMessage], enhanced_personality: str = None) -> str:
         """Mock AI response for development/testing."""
+        personality = enhanced_personality or self.system_personality
 
         user_messages = [msg for msg in messages if msg.role == "user"]
         if not user_messages:
@@ -70,7 +93,7 @@ class AIService:
         elif "?" in last_message:
             return (
                 "That's a great question! I'm currently running in mock mode. "
-                "Once connected to a real LLM, I’ll give you detailed answers."
+                "Once connected to a real LLM, I'll give you detailed answers."
             )
 
         elif any(word in last_message for word in ["help", "what can you do"]):
@@ -84,12 +107,8 @@ class AIService:
             "I'm currently in mock mode, but I'm ready to do more once connected "
             "to a real AI model."
         )
-
-    # ------------------------------------------------------------------
-    # OPENAI PROVIDER
-    # ------------------------------------------------------------------
-
-    async def _openai_response(self, messages: List[ChatMessage]) -> str:
+    
+    async def _openai_response(self, messages: List[ChatMessage], enhanced_personality: str = None) -> str:
         """Generate response using OpenAI API."""
         try:
             from openai import AsyncOpenAI
@@ -99,6 +118,7 @@ class AIService:
                 return "Error: OpenAI API key is not configured."
 
             client = AsyncOpenAI(api_key=config.settings.openai_api_key)
+            personality = enhanced_personality or self.system_personality
 
             formatted_messages = [
                 {"role": msg.role, "content": msg.content}
@@ -108,7 +128,7 @@ class AIService:
             if not any(msg.role == "system" for msg in messages):
                 formatted_messages.insert(0, {
                     "role": "system",
-                    "content": self.system_personality
+                    "content": personality
                 })
 
             response = await client.chat.completions.create(
@@ -123,15 +143,12 @@ class AIService:
         except Exception as e:
             logger.error(f"OpenAI API error: {e}")
             return "Sorry, I encountered an error while generating a response."
-
-    # ------------------------------------------------------------------
-    # OLLAMA PROVIDER (LOCAL, FREE)
-    # ------------------------------------------------------------------
-
-    async def _ollama_response(self, messages: List[ChatMessage]) -> str:
+    
+    async def _ollama_response(self, messages: List[ChatMessage], enhanced_personality: str = None) -> str:
         """Generate response using local Ollama LLM."""
         try:
-            prompt = self._format_messages_for_ollama(messages)
+            personality = enhanced_personality or self.system_personality
+            prompt = self._format_messages_for_ollama(messages, personality)
 
             payload = {
                 "model": config.settings.ollama_model,
@@ -152,15 +169,12 @@ class AIService:
             logger.error(f"Ollama API error: {e}")
             return "Sorry, I had trouble communicating with the local AI model."
 
-    # ------------------------------------------------------------------
-    # HELPERS
-    # ------------------------------------------------------------------
-
-    def _format_messages_for_ollama(self, messages: List[ChatMessage]) -> str:
+    def _format_messages_for_ollama(self, messages: List[ChatMessage], personality: str = None) -> str:
         """
         Convert chat messages into a single prompt suitable for local LLMs.
         """
-        prompt = f"System: {self.system_personality}\n\n"
+        system_prompt = personality or self.system_personality
+        prompt = f"System: {system_prompt}\n\n"
 
         for msg in messages:
             role = msg.role.capitalize()

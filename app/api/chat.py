@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException
 from app.models.schemas import ChatRequest, ChatResponse, ChatMessage
 from app.services.ai_service import ai_service
 from app.memory.persistent import persistent_memory
+from app.memory.semantic import semantic_memory
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +57,20 @@ async def chat(request: ChatRequest) -> ChatResponse:
         
         # Save assistant response to persistent storage
         persistent_memory.save_message(session_id, "assistant", response_text)
+        
+        # Extract and store semantic memories from the conversation
+        if request.user_id:
+            try:
+                # Use the full conversation including the new messages
+                full_conversation = messages_for_ai + [
+                    ChatMessage(role="assistant", content=response_text)
+                ]
+                await semantic_memory.extract_and_store(
+                    messages=full_conversation,
+                    user_id=request.user_id
+                )
+            except Exception as e:
+                logger.warning(f"Error extracting semantic memories: {e}")
         
         # Get total message count for metadata
         total_count = persistent_memory.get_message_count(session_id)
