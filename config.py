@@ -48,9 +48,7 @@ class Settings(BaseSettings):
     embedding_provider: str = "mock"  # mock, openai, ollama
     embedding_dimension: int = 384  # Embedding vector dimension
     openai_embedding_model: str = "text-embedding-3-small"
-    semantic_memory_min_similarity: float = 0.3  # Minimum similarity for retrieval
-    semantic_memory_max_retrieved: int = 5  # Max memories to retrieve per query
+    semantic_memory_min_similarity: float = 0.3 
+    semantic_memory_max_retrieved: int = 5  
 
-
-# Global settings instance
 settings = Settings()
